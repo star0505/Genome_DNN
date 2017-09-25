@@ -58,7 +58,7 @@ data_y = label[idx].tolist()
 
 # In[16]:
 
-N, itr, lr, train_log = config.getint('Parameter', 'batch_size'), config.getint('Parameter','iteration'), config.getfloat('Parameter', 'learning_rate'), config.get('Parameter', 'train_dir')
+N, itr, lr, train_log, d = config.getint('Parameter', 'batch_size'), config.getint('Parameter','iteration'), config.getfloat('Parameter', 'learning_rate'), config.get('Parameter', 'train_dir'), config.getint('Parameter', 'hidden_dim')
 print "Batch Size: ", N
 
 # In[17]:
@@ -70,17 +70,21 @@ x = tf.placeholder(tf.float32, [None, len(feature)],name="x")
 y = tf.placeholder(tf.int32, [None,1],name="y")
 
 
-# In[18]:
+def multi_NN(feature, x, d):
+	W1 = tf.Variable(tf.zeros([len(feature),d]), name='W1')
+	b1 = tf.Variable(tf.zeros(d), name="b1")
+	y_1 = tf.matmul(x, W1) + b1 #[N,feature]
+	W2 = tf.Variable(tf.zeros([d,d]), name='W2')
+	b2 = tf.Variable(tf.zeros(d), name="b2")
+	y_2 = tf.matmul(y_1, W2) + b2
+	W3 = tf.Variable(tf.zeros([d,1]), name='W3')
+	b3 = tf.Variable(tf.zeros(1), name="b3")
+	y_ = tf.matmul(y_2, W3) + b3
+	l2_regularization = tf.nn.l2_loss(W3) + tf.nn.l2_loss(b3)
+	
+	return l2_regularization, y_
 
-
-W = tf.Variable(tf.zeros([len(feature),1]), name='W')
-b = tf.Variable(tf.zeros(1), name="b")
-l2_regularization = tf.nn.l2_loss(W) + tf.nn.l2_loss(b)
-y_ = tf.matmul(x, W) + b
-
-
-# In[19]:
-
+l2_regularization, y_ = multi_NN(feature, x, d)
 
 prediction = tf.greater(tf.sigmoid(y_), 0.5, name="prediction")
 correct = tf.equal(prediction, tf.equal(y, True))
