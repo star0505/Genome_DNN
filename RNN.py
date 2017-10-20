@@ -7,6 +7,7 @@ import tensorflow as tf
 from tqdm import tqdm
 import ConfigParser
 from sklearn import metrics
+from tensorflow.contrib.rnn import BasicLSTMCell
 
 config = ConfigParser.RawConfigParser()
 config.read('config.cfg')
@@ -30,20 +31,10 @@ def file_read(data_dir):
 
 rna_data, rna_feature, samples = file_read(data_dir_rna)
 beta_data, beta_feature, _ = file_read(data_dir_beta)
-what_data_use = config.get('Parameter', 'what_data_use')
-if what_data_use == 'rna':
-	data = rna_data
-	feature = rna_feature
-else:
-	if what_data_use == 'beta':
-		data = beta_data
-		feature = beta_feature
-	else: 
-		data = np.column_stack((rna_data,beta_data))
-		feature = rna_feature + beta_feature
 
 print("# of samples:", len(samples))
-print("Dimension of data:", data.shape)
+print("Dimension of rna:", rna_data.shape)
+print("Dimension of beta:", beta_data.shape)
 label = np.zeros(100)
 for i,sample in enumerate(samples):
     if 'sdpc' in sample:
@@ -54,11 +45,18 @@ print("size of label:", len(label))
 print("# of MDD:", len(label) - len(np.nonzero(label)[0]))
 print("# of normal sample:",len(np.nonzero(label)[0]))
 
-idx = range(len(data))
+if len(beta_feature) >= len(rna_feature): max_length = len(beta_feature)
+else: max_length = len(rna_feature)
+idx = range(len(rna_data))
 np.random.shuffle(idx)
-data_x = data[idx].tolist()
+data_x = np.zeros([100, 2, max_length])
+seq_length = np.zeros(100)
+seq_length[:] = 2
+data_x[:,0,:] = np.array(beta_data)
+rna = np.zeros([100, max_length])
+rna[:,:len(rna_feature)] = np.array(rna_data)
+data_x[:,1,:] = np.array(rna)
 data_y = label[idx].tolist()
-
 
 # # Model
 
@@ -69,23 +67,24 @@ print "Learning rate: ", lr
 
 g_step = tf.Variable(0)
 lr = tf.train.exponential_decay(lr, g_step, 100, 0.98)
-x = tf.placeholder(tf.float32, [None, len(feature)],name="x")
+x = tf.placeholder(tf.float32, [None, 2, max_length], name="rna_x")
 y = tf.placeholder(tf.int32, [None], name="y")
+seq_len = tf.placeholder(tf.int32, [None], name="seq_len")
+cell_fw = BasicLSTMCell(d, state_is_tuple=True)
+cell_bw = BasicLSTMCell(d, state_is_tuple=True)
 
-
-W = tf.Variable(tf.zeros([len(feature),1]), name='W1')
-b = tf.Variable(tf.zeros(1), name="b")
-l2_regularization = tf.nn.l2_loss(W) + tf.nn.l2_loss(b)
-y_ = tf.matmul(x, W) + b #[N,1]
-y_ = tf.reshape(y_,[-1])
+(output_fw, output_bw), ((_, _), (_, _)) = tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, x, \
+															seq_len, dtype='float', scope='biLSTM')
+rnn_output = tf.concat([output_fw, output_bw], axis=2, name="rnn") #[N, 2, 2*d]
+##
+logits = tf.reduce_mean(rnn_output, axis=1) #[N, 2*d]
+y_ = tf.reduce_max(logits, axis=1) #[N]
+print logits
 
 prediction = tf.greater(tf.sigmoid(y_), 0.5, name="prediction")
 correct = tf.equal(prediction, tf.equal(y, True))
 accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
-if l2_regularizer_use == 1:
-	loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(y, tf.float32),logits=y_) \
-								+ l2_regularization
-else: loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(y, tf.float32), logits=y_)
+loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(y, tf.float32), logits=y_)
 loss_mean = tf.reduce_mean(loss)
 print loss_mean
 train_step = tf.train.RMSPropOptimizer(lr, 0.9).minimize(loss)
@@ -101,21 +100,23 @@ sess = tf.Session()
 train_writer = tf.summary.FileWriter(train_log, sess.graph)
 sess.run(init)
 
-def cross_validation(x,y,portion,test_ratio):
-    t1 = test_ratio*portion
-    t2 = test_ratio*(portion+1)
-    train_x = np.array(x[:int(len(x)*t1)] + x[int(len(x)*(t2)):])
-    train_y = np.array(y[:int(len(x)*t1)] + y[int(len(x)*(t2)):])
-    test_x = np.array(x[int(len(x)*t1):int(len(x)*(t2))])
-    test_y = np.array(y[int(len(x)*t1):int(len(x)*(t2))])
-    return train_x, train_y, test_x, test_y
+def cross_validation(x,y,portion,test_ratio, seq_len):
+	t1 = test_ratio*portion
+	t2 = test_ratio*(portion+1)
+	train_x = np.concatenate((x[:int(len(x)*t1),:,:] , x[int(len(x)*t2):,:,:]),axis=0)
+	train_y = np.array(y[:int(len(x)*t1)] + y[int(len(x)*t2):])
+	test_x = x[int(len(x)*t1):int(len(x)*t2)]
+	test_y = np.array(y[int(len(x)*t1):int(len(x)*t2)])
+	train_len = np.concatenate((seq_len[:int(len(x)*t1)],seq_len[int(len(x)*t2):]))
+	test_len = seq_len[int(len(x)*t1):int(len(x)*t2)]
+	return train_x, train_y, test_x, test_y, train_len, test_len
 
-def random_batch(train_data, train_label, batch_size):
+def random_batch(train_data, train_label, batch_size, seq_len):
     idx = np.array(range(len(train_data)))
     np.random.shuffle(idx)
     x = np.array(train_data[idx])
     y = np.array(train_label[idx])
-    return x[:batch_size], y[:batch_size]
+    return x[:batch_size], y[:batch_size], seq_len[:batch_size]
 
 #train_x, test_x = data_x[:int(len(data_x)*0.8)], data_x[int(len(data_x)*0.8):]
 #train_y, test_y = label_y[:int(len(label_y)*0.8)], label_y[int(len(label_y)*0.8):]
@@ -123,25 +124,19 @@ total_test_acc = []
 total_test_auc = []
 for k in range(int(1/test_ratio)):
 	sess.run(init)
-	train_x, train_y, test_x, test_y = cross_validation(data_x,data_y,k,test_ratio)
+	train_x, train_y, test_x, test_y, train_len, test_len = \
+										cross_validation(data_x,data_y,k,test_ratio, seq_length)
 	#TRAIN
 	for i in range(itr):
-		batch_x, batch_y = random_batch(train_x, train_y, N)
-		_, acc, loss, train_sum, weight = sess.run([train_step, accuracy, loss_mean, merged, W],\
-															feed_dict={x: batch_x, y: batch_y})
+		batch_x, batch_y, batch_len = random_batch(train_x, train_y, N, train_len)
+		_, acc, loss, train_sum = sess.run([train_step, accuracy, loss_mean, merged],\
+											feed_dict={x: batch_x, y: batch_y, seq_len:batch_len})
 		if i%100 == 0:
 			train_writer.add_summary(train_sum, i)
 			print "batch_time: " , i , "[*] Accuracy: ", acc
-			print "Max: ", np.max(weight), "Min: ", np.min(weight) 
-			print "feature(max): ", feature[np.argmax(weight)]
-			print "feature(min): ", feature[np.argmin(weight)]
-		if i == -1: 
-			print "Max: ", np.max(weight), "Min: ", np.min(weight)
-			print "feature(max): ", feature[np.argmax(weight)] 
-			print "feature(min): ", feature[np.argmin(weight)]
 	#TEST
 	test_acc, test_loss, test_pred, label = sess.run([accuracy, loss_mean, prediction, y], \
-														feed_dict={x: test_x, y: test_y})
+												feed_dict={x: test_x, y: test_y, seq_len:test_len})
 	fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
 	test_auc = metrics.auc(fpr, tpr)
 	print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss, "\n" 

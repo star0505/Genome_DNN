@@ -30,17 +30,9 @@ def file_read(data_dir):
 
 rna_data, rna_feature, samples = file_read(data_dir_rna)
 beta_data, beta_feature, _ = file_read(data_dir_beta)
-what_data_use = config.get('Parameter', 'what_data_use')
-if what_data_use == 'rna':
-	data = rna_data
-	feature = rna_feature
-else:
-	if what_data_use == 'beta':
-		data = beta_data
-		feature = beta_feature
-	else: 
-		data = np.column_stack((rna_data,beta_data))
-		feature = rna_feature + beta_feature
+
+data = np.column_stack((rna_data,beta_data))
+feature = rna_feature + beta_feature
 
 print("# of samples:", len(samples))
 print("Dimension of data:", data.shape)
@@ -72,11 +64,21 @@ lr = tf.train.exponential_decay(lr, g_step, 100, 0.98)
 x = tf.placeholder(tf.float32, [None, len(feature)],name="x")
 y = tf.placeholder(tf.int32, [None], name="y")
 
+def multi_NN(feature, x, hidden_d):
+	W1 = tf.Variable(tf.zeros([len(feature),hidden_d]), name='W1')
+	b1 = tf.Variable(tf.zeros(hidden_d), name="b1")
+	y_1 = tf.matmul(x, W1) + b1 # [N, features]
+	#ReLU at hidden layer outputs
+	y_1 = tf.nn.relu(y_1)
+	W2 = tf.Variable(tf.zeros([hidden_d, 1]), name='W2')
+	b2 = tf.Variable(tf.zeros(1), name="b2")
+	y_2 = tf.matmul(y_1, W2) + b2 #[N, 1]
+	l2_regularization = tf.nn.l2_loss(W2) + tf.nn.l2_loss(b2)
+	
+	return l2_regularization, y_2
 
-W = tf.Variable(tf.zeros([len(feature),1]), name='W1')
-b = tf.Variable(tf.zeros(1), name="b")
-l2_regularization = tf.nn.l2_loss(W) + tf.nn.l2_loss(b)
-y_ = tf.matmul(x, W) + b #[N,1]
+
+l2_regularization, y_ = multi_NN(feature, x, d)
 y_ = tf.reshape(y_,[-1])
 
 prediction = tf.greater(tf.sigmoid(y_), 0.5, name="prediction")
@@ -127,24 +129,17 @@ for k in range(int(1/test_ratio)):
 	#TRAIN
 	for i in range(itr):
 		batch_x, batch_y = random_batch(train_x, train_y, N)
-		_, acc, loss, train_sum, weight = sess.run([train_step, accuracy, loss_mean, merged, W],\
+		_, acc, loss, train_sum = sess.run([train_step, accuracy, loss_mean, merged],\
 															feed_dict={x: batch_x, y: batch_y})
 		if i%100 == 0:
 			train_writer.add_summary(train_sum, i)
 			print "batch_time: " , i , "[*] Accuracy: ", acc
-			print "Max: ", np.max(weight), "Min: ", np.min(weight) 
-			print "feature(max): ", feature[np.argmax(weight)]
-			print "feature(min): ", feature[np.argmin(weight)]
-		if i == -1: 
-			print "Max: ", np.max(weight), "Min: ", np.min(weight)
-			print "feature(max): ", feature[np.argmax(weight)] 
-			print "feature(min): ", feature[np.argmin(weight)]
 	#TEST
 	test_acc, test_loss, test_pred, label = sess.run([accuracy, loss_mean, prediction, y], \
 														feed_dict={x: test_x, y: test_y})
 	fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
 	test_auc = metrics.auc(fpr, tpr)
-	print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss, "\n" 
+	print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss 
 	total_test_acc.append(test_acc)
 	total_test_auc.append(test_auc)
 
