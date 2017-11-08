@@ -133,7 +133,7 @@ for k in range(int(1/test_ratio)):
 															feed_dict={x: batch_x, y: batch_y})
 		if i%100 == 0:
 			train_writer.add_summary(train_sum, i)
-			print "batch_time: " , i , "[*] Accuracy: ", acc
+			print "batch_time: " , i , "[*] Accuracy: ", acc, ", loss:", loss
 	#TEST
 	test_acc, test_loss, test_pred, label = sess.run([accuracy, loss_mean, prediction, y], \
 														feed_dict={x: test_x, y: test_y})

@@ -24,7 +24,7 @@ def file_read(data_dir):
 		if i != 0:
 			samples.append(line.split('\t')[0])
 			data[i-1,:] = line.split('\t')[1:]
-	print data_dir
+	#print data_dir
 	f.close()
 	return data, feature, samples
 
@@ -42,17 +42,12 @@ else:
 		data = np.column_stack((rna_data,beta_data))
 		feature = rna_feature + beta_feature
 
-print("# of samples:", len(samples))
-print("Dimension of data:", data.shape)
 label = np.zeros(100)
 for i,sample in enumerate(samples):
     if 'sdpc' in sample:
         label[i] = 0
     else:
         label[i] = 1
-print("size of label:", len(label))
-print("# of MDD:", len(label) - len(np.nonzero(label)[0]))
-print("# of normal sample:",len(np.nonzero(label)[0]))
 
 idx = range(len(data))
 np.random.shuffle(idx)
@@ -87,7 +82,6 @@ if l2_regularizer_use == 1:
 								+ l2_regularization
 else: loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(y, tf.float32), logits=y_)
 loss_mean = tf.reduce_mean(loss)
-print loss_mean
 train_step = tf.train.RMSPropOptimizer(lr, 0.9).minimize(loss)
 
 #Summary
@@ -121,7 +115,12 @@ def random_batch(train_data, train_label, batch_size):
 #train_y, test_y = label_y[:int(len(label_y)*0.8)], label_y[int(len(label_y)*0.8):]
 total_test_acc = []
 total_test_auc = []
+save_result_dir = config.get('Parameter', 'save_result_dir')
 for k in range(int(1/test_ratio)):
+	with open(save_result_dir, 'a') as f:
+            f.write(str(k))
+            f.write(' fold')
+            f.write('\n')
 	sess.run(init)
 	train_x, train_y, test_x, test_y = cross_validation(data_x,data_y,k,test_ratio)
 	#TRAIN
@@ -129,25 +128,40 @@ for k in range(int(1/test_ratio)):
 		batch_x, batch_y = random_batch(train_x, train_y, N)
 		_, acc, loss, train_sum, weight = sess.run([train_step, accuracy, loss_mean, merged, W],\
 															feed_dict={x: batch_x, y: batch_y})
-		if i%1000 == 0 and i!=0:
-			train_writer.add_summary(train_sum, i)
-			print "[*] batch_time: " , i , "Accuracy: ", acc, "Loss: ", loss
-			max_idx = np.argsort(weight,axis=0)
-                        for j in range(5):
-                            print j, "rank \n",
-                            print "Min: ", float(weight[int(max_idx[j])]), \
-                                            '\t', feature[int(max_idx[j])]
-                            print "Max: ", float(weight[int(max_idx[-(j+1)])]), \
-                                            '\t', feature[int(max_idx[-(j+1)])]
-	
+		#if i%100 == 0:
+		#	train_writer.add_summary(train_sum, i)
+		#	print "batch_time: " , i , "[*] Accuracy: ", acc
+		#	print "Max: ", np.max(weight), "Min: ", np.min(weight) 
+		#	print "feature(max): ", feature[np.argmax(weight)]
+		#	print "feature(min): ", feature[np.argmin(weight)]
+	max_idx = np.argsort(weight, axis=0)
+        for j in range(5):
+            print float(weight[int(max_idx[j])]), feature[int(max_idx[j])] 
+            print float(weight[int(max_idx[-(j+1)])]), feature[int(max_idx[-(j+1)])]
+            with open(save_result_dir, 'a') as f:
+                f.write(str(float(weight[int(max_idx[j])])))
+                f.write('\t')
+                f.write(feature[int(max_idx[j])])
+                f.write('\t')
+                f.write(str(float(weight[int(max_idx[-(j+1)])])))
+                f.write('\t')
+                f.write(feature[int(max_idx[-(j+1)])])
+                f.write('\n')
         #TEST
 	test_acc, test_loss, test_pred, label = sess.run([accuracy, loss_mean, prediction, y], \
 														feed_dict={x: test_x, y: test_y})
 	fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
 	test_auc = metrics.auc(fpr, tpr)
-	print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss, "\n" 
+	#print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss, "\n" 
 	total_test_acc.append(test_acc)
 	total_test_auc.append(test_auc)
 
-print "[*]Average test accuracy", sum(total_test_acc)/len(total_test_acc)
-print "[*]Average test auc", sum(total_test_auc)/len(total_test_auc)
+total_acc = sum(total_test_acc)/len(total_test_acc)
+total_auc = sum(total_test_auc)/len(total_test_auc)
+print(total_acc)
+print(total_auc)
+with open(save_result_dir,'a') as f:
+	f.write(str(total_acc))
+	f.write('\t')
+	f.write(str(total_auc))
+	f.write('\n')

@@ -30,17 +30,9 @@ def file_read(data_dir):
 
 rna_data, rna_feature, samples = file_read(data_dir_rna)
 beta_data, beta_feature, _ = file_read(data_dir_beta)
-what_data_use = config.get('Parameter', 'what_data_use')
-if what_data_use == 'rna':
-	data = rna_data
-	feature = rna_feature
-else:
-	if what_data_use == 'beta':
-		data = beta_data
-		feature = beta_feature
-	else: 
-		data = np.column_stack((rna_data,beta_data))
-		feature = rna_feature + beta_feature
+
+data = np.column_stack((rna_data,beta_data))
+feature = rna_feature + beta_feature
 
 print("# of samples:", len(samples))
 print("Dimension of data:", data.shape)
@@ -73,10 +65,21 @@ x = tf.placeholder(tf.float32, [None, len(feature)],name="x")
 y = tf.placeholder(tf.int32, [None], name="y")
 
 
-W = tf.Variable(tf.zeros([len(feature),1]), name='W1')
-b = tf.Variable(tf.zeros(1), name="b")
-l2_regularization = tf.nn.l2_loss(W) + tf.nn.l2_loss(b)
-y_ = tf.matmul(x, W) + b #[N,1]
+def multi_NN(feature, x, d):
+	W1 = tf.Variable(tf.zeros([len(feature),d]), name='W1')
+	b1 = tf.Variable(tf.zeros(d), name="b1")
+	y_1 = tf.matmul(x, W1) + b1 #[N,feature]
+	W2 = tf.Variable(tf.zeros([d,1]), name='W2')
+	b2 = tf.Variable(tf.zeros(1), name="b2")
+	y_2 = tf.matmul(y_1, W2) + b2 #[N,1]
+	#W3 = tf.Variable(tf.zeros([d,1]), name='W3')
+	#b3 = tf.Variable(tf.zeros(1), name="b3")
+	#y_3 = tf.matmul(y_2, W3) + b3
+	l2_regularization = tf.nn.l2_loss(W2) + tf.nn.l2_loss(b2)
+	
+	return l2_regularization, y_2
+
+l2_regularization, y_ = multi_NN(feature, x, d) #[N,1]
 y_ = tf.reshape(y_,[-1])
 
 prediction = tf.greater(tf.sigmoid(y_), 0.5, name="prediction")
@@ -122,30 +125,22 @@ def random_batch(train_data, train_label, batch_size):
 total_test_acc = []
 total_test_auc = []
 for k in range(int(1/test_ratio)):
-	sess.run(init)
 	train_x, train_y, test_x, test_y = cross_validation(data_x,data_y,k,test_ratio)
 	#TRAIN
 	for i in range(itr):
-		batch_x, batch_y = random_batch(train_x, train_y, N)
-		_, acc, loss, train_sum, weight = sess.run([train_step, accuracy, loss_mean, merged, W],\
-															feed_dict={x: batch_x, y: batch_y})
-		if i%1000 == 0 and i!=0:
-			train_writer.add_summary(train_sum, i)
-			print "[*] batch_time: " , i , "Accuracy: ", acc, "Loss: ", loss
-			max_idx = np.argsort(weight,axis=0)
-                        for j in range(5):
-                            print j, "rank \n",
-                            print "Min: ", float(weight[int(max_idx[j])]), \
-                                            '\t', feature[int(max_idx[j])]
-                            print "Max: ", float(weight[int(max_idx[-(j+1)])]), \
-                                            '\t', feature[int(max_idx[-(j+1)])]
-	
-        #TEST
-	test_acc, test_loss, test_pred, label = sess.run([accuracy, loss_mean, prediction, y], \
-														feed_dict={x: test_x, y: test_y})
+    		batch_x, batch_y = random_batch(train_x, train_y, N)
+    		_, acc, loss, train_summary, train_pred, y_train = sess.run([train_step, accuracy, loss_mean, merged, prediction, y_],\
+					feed_dict={x: batch_x, y: batch_y})
+    		if i%100 == 0:
+        		train_writer.add_summary(train_summary, i)
+        		print "batch_time: " , i , "[*] Accuracy: ", acc
+	#TEST
+	test_acc, test_loss, test_pred, label, y_test = sess.run([accuracy, loss_mean, prediction, y, y_], \
+				feed_dict={x: test_x, y: test_y})
+	pdb.set_trace()
 	fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
 	test_auc = metrics.auc(fpr, tpr)
-	print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss, "\n" 
+	print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss 
 	total_test_acc.append(test_acc)
 	total_test_auc.append(test_auc)
 
