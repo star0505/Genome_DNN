@@ -136,7 +136,12 @@ def random_batch(train_data, train_label, batch_size):
 #train_y, test_y = label_y[:int(len(label_y)*0.8)], label_y[int(len(label_y)*0.8):]
 total_test_acc = []
 total_test_auc = []
+save_result_dir = config.get('Parameter', 'save_result_dir')
 for k in range(int(1/test_ratio)):
+        with open(save_result_dir, 'a') as f:
+            f.write(str(k))
+            f.write(' fold')
+            f.write('\n')
 	sess.run(init)
 	train_x, train_y, test_x, test_y = \
                         cross_validation(msdp_x,msdp_y,sdp_x,sdp_y,sdpc_x,sdpc_y,k,test_ratio)
@@ -158,18 +163,19 @@ for k in range(int(1/test_ratio)):
                 #                            '\t', feature[int(max_idx[-(j+1)])]
 	
         #TEST
-        test_acc, test_loss, test_pred, label, logits = \
-                sess.run([accuracy, loss_mean, prediction, y, y_], feed_dict={x:test_x, y:test_y})
-	idx_predict = np.argmax(logits, axis=1)
-        corr_0 = len(np.argwhere(idx_predict==0))/len(np.argwhere(label[:,0]==1))
-        corr_1 = len(np.argwhere(idx_predict==1))/len(np.argwhere(label[:,1]==1))
-        corr_2 = len(np.argwhere(idx_predict==2))/len(np.argwhere(label[:,2]==1))
-        print "corr 0, corr 1, corr2: ", corr_0, corr_1, corr_2
-        #fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
+        test_acc, test_loss, test_pred, label = \
+                sess.run([accuracy, loss_mean, prediction, y], feed_dict={x:test_x, y:test_y})
+	#fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
 	#test_auc = metrics.auc(fpr, tpr)
 	print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss, "\n" 
 	total_test_acc.append(test_acc)
 	#total_test_auc.append(test_auc)
+        with open(save_result_dir, 'a') as f:
+            f.write(str(test_acc))
+            f.write('\n')
 
 print "[*]Average test accuracy", sum(total_test_acc)/len(total_test_acc)
 #print "[*]Average test auc", sum(total_test_auc)/len(total_test_auc)
+with open(save_result_dir, 'a') as f:
+    f.write(str(sum(total_test_acc)/len(total_test_acc)))
+    f.write('\n')

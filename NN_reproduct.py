@@ -49,12 +49,6 @@ for i,sample in enumerate(samples):
     else:
         label[i] = 1
 
-idx = range(len(data))
-np.random.shuffle(idx)
-data_x = data[idx].tolist()
-data_y = label[idx].tolist()
-
-
 # # Model
 
 
@@ -98,18 +92,31 @@ sess.run(init)
 def cross_validation(x,y,portion,test_ratio):
     t1 = test_ratio*portion
     t2 = test_ratio*(portion+1)
-    train_x = np.array(x[:int(len(x)*t1)] + x[int(len(x)*(t2)):])
-    train_y = np.array(y[:int(len(x)*t1)] + y[int(len(x)*(t2)):])
-    test_x = np.array(x[int(len(x)*t1):int(len(x)*(t2))])
-    test_y = np.array(y[int(len(x)*t1):int(len(x)*(t2))])
+    pos_x = x[np.argwhere(label==1)][:,0,:].tolist()
+    pos_y = y[np.argwhere(label==1)][:,0].tolist()
+    neg_x = x[np.argwhere(label==0)][:,0,:].tolist()
+    neg_y = y[np.argwhere(label==0)][:,0].tolist()
+    train_xx = np.array(pos_x[:int(len(pos_x)*t1)] + pos_x[int(len(pos_x)*(t2)):]\
+                        + neg_x[:int(len(neg_x)*t1)] + neg_x[int(len(neg_x)*(t2)):])
+    train_yy = np.array(pos_y[:int(len(pos_y)*t1)] + pos_y[int(len(pos_y)*(t2)):]\
+                        + neg_y[:int(len(neg_y)*t1)] + neg_y[int(len(neg_y)*(t2)):])
+    test_x = np.array(pos_x[int(len(pos_x)*t1):int(len(pos_x)*(t2))]\
+                        + neg_x[int(len(neg_x)*t1):int(len(neg_x)*(t2))])
+    test_y = np.array(pos_y[int(len(pos_y)*t1):int(len(pos_y)*(t2))]\
+                        + neg_y[int(len(neg_y)*t1):int(len(neg_y)*(t2))])
+    idx = np.arange(len(train_xx))
+    np.random.shuffle(idx)
+    train_x = train_xx[idx]
+    train_y = train_yy[idx]
+
     return train_x, train_y, test_x, test_y
 
 def random_batch(train_data, train_label, batch_size):
     idx = np.array(range(len(train_data)))
     np.random.shuffle(idx)
-    x = np.array(train_data[idx])
-    y = np.array(train_label[idx])
-    return x[:batch_size], y[:batch_size]
+    batch_x = np.array(train_data[idx])
+    batch_y = np.array(train_label[idx])
+    return batch_x[:batch_size], batch_y[:batch_size]
 
 #train_x, test_x = data_x[:int(len(data_x)*0.8)], data_x[int(len(data_x)*0.8):]
 #train_y, test_y = label_y[:int(len(label_y)*0.8)], label_y[int(len(label_y)*0.8):]
@@ -122,12 +129,14 @@ for k in range(int(1/test_ratio)):
             f.write(' fold')
             f.write('\n')
 	sess.run(init)
-	train_x, train_y, test_x, test_y = cross_validation(data_x,data_y,k,test_ratio)
-	#TRAIN
+	train_x, train_y, test_x, test_y = cross_validation(data,label,k,test_ratio)
+
+        #TRAIN
 	for i in range(itr):
 		batch_x, batch_y = random_batch(train_x, train_y, N)
-		_, acc, loss, train_sum, weight = sess.run([train_step, accuracy, loss_mean, merged, W],\
-															feed_dict={x: batch_x, y: batch_y})
+		_, acc, loss, train_sum, weight = \
+                        sess.run([train_step, accuracy, loss_mean, merged, W], \
+                        feed_dict={x: batch_x, y: batch_y})
 		#if i%100 == 0:
 		#	train_writer.add_summary(train_sum, i)
 		#	print "batch_time: " , i , "[*] Accuracy: ", acc
@@ -138,6 +147,7 @@ for k in range(int(1/test_ratio)):
         for j in range(5):
             print float(weight[int(max_idx[j])]), feature[int(max_idx[j])] 
             print float(weight[int(max_idx[-(j+1)])]), feature[int(max_idx[-(j+1)])]
+            print '\n'
             with open(save_result_dir, 'a') as f:
                 f.write(str(float(weight[int(max_idx[j])])))
                 f.write('\t')
@@ -148,8 +158,8 @@ for k in range(int(1/test_ratio)):
                 f.write(feature[int(max_idx[-(j+1)])])
                 f.write('\n')
         #TEST
-	test_acc, test_loss, test_pred, label = sess.run([accuracy, loss_mean, prediction, y], \
-														feed_dict={x: test_x, y: test_y})
+	test_acc, test_loss, test_pred, label = \
+            sess.run([accuracy, loss_mean, prediction, y], feed_dict={x: test_x, y: test_y})
 	fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
 	test_auc = metrics.auc(fpr, tpr)
 	#print "[*] Fold", k ,"Test Accuracy: ", test_acc , ", loss: ", test_loss, "\n" 
