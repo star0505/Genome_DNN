@@ -161,9 +161,9 @@ for k in range(int(1/test_ratio)):
         test_acc, test_loss, test_pred, label, logits = \
                 sess.run([accuracy, loss_mean, prediction, y, y_], feed_dict={x:test_x, y:test_y})
 	idx_predict = np.argmax(logits, axis=1)
-        corr_0 = len(np.argwhere(idx_predict==0))/len(np.argwhere(label[:,0]==1))
-        corr_1 = len(np.argwhere(idx_predict==1))/len(np.argwhere(label[:,1]==1))
-        corr_2 = len(np.argwhere(idx_predict==2))/len(np.argwhere(label[:,2]==1))
+        corr_0 = 100*len(np.argwhere(idx_predict==0))/len(np.argwhere(label[:,0]==1))
+        corr_1 = 100*len(np.argwhere(idx_predict==1))/len(np.argwhere(label[:,1]==1))
+        corr_2 = 100*len(np.argwhere(idx_predict==2))/len(np.argwhere(label[:,2]==1))
         print "corr 0, corr 1, corr2: ", corr_0, corr_1, corr_2
         #fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
 	#test_auc = metrics.auc(fpr, tpr)
