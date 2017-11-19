@@ -13,13 +13,14 @@ config.read('config.cfg')
 
 data_dir_rna = config.get('Parameter', 'data_dir_rna')
 data_dir_beta = config.get('Parameter', 'data_dir_beta')
+data_dir_both = config.get('Parameter', 'data_dir_both')
 
 def file_read(data_dir):
 	f = open(data_dir, 'r')
 	lines = f.readlines()
 	feature = tuple(lines[0].split('\t')[1:])
 	samples = []
-	data = np.zeros([100,len(feature)])
+	data = np.zeros([len(lines)-1,len(feature)])
 	for i, line in enumerate(lines):
 		if i != 0:
 			samples.append(line.split('\t')[0])
@@ -30,7 +31,9 @@ def file_read(data_dir):
 
 rna_data, rna_feature, samples = file_read(data_dir_rna)
 beta_data, beta_feature, _ = file_read(data_dir_beta)
-label = np.zeros([100,3])
+both_data, both_feature, _ = file_read(data_dir_both)
+
+label = np.zeros([len(rna_data),3])
 for i,sample in enumerate(samples):
     if 'msdp' in sample:
         label[i,2] = 1
@@ -49,8 +52,8 @@ else:
 	        data = beta_data
 		feature = beta_feature
 	else: 
-		data = np.column_stack((rna_data,beta_data))
-		feature = rna_feature + beta_feature
+		data = both_data
+		feature = both_feature
 
 msdp_x = data[np.argwhere(label[:,2]==1)][:,0,:].tolist()
 msdp_y = label[np.argwhere(label[:,2]==1)][:,0,:].tolist()
@@ -80,6 +83,7 @@ W = tf.Variable(tf.zeros([len(feature),3]), name='W1')
 b = tf.Variable(tf.zeros(3), name="b")
 l2_regularization = tf.nn.l2_loss(W) + tf.nn.l2_loss(b)
 y_ = tf.nn.softmax(tf.matmul(x, W) + b) #[N,3]
+yy = tf.argmax(y,1)
 prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1), name="prediction")
 accuracy = tf.reduce_mean(tf.cast(prediction, tf.float32))
 
@@ -121,6 +125,10 @@ def cross_validation(msdp_x,msdp_y,sdp_x,sdp_y,sdpc_x,sdpc_y,portion,test_ratio)
     np.random.shuffle(idx)
     train_x = train_xx[idx]
     train_y = train_yy[idx]
+    test_idx = np.arange(len(test_y))
+    np.random.shuffle(test_idx)
+    test_x = test_x[test_idx]
+    test_y = test_y[test_idx]
     print len(train_x), len(test_x)
 
     return train_x, train_y, test_x, test_y
@@ -143,7 +151,8 @@ for k in range(int(1/test_ratio)):
 	#TRAIN
 	for i in range(itr):
 		batch_x, batch_y = random_batch(train_x, train_y, N)
-		_, acc, loss, train_sum, weight = sess.run([train_step, accuracy, loss_mean, merged, W],\
+		_, acc, loss, train_sum, weight =\
+                            sess.run([train_step, accuracy, loss_mean, merged, W],\
 															feed_dict={x: batch_x, y: batch_y})
 		if i%100 == 0 and i!=0:
                     print "iteration: ",i," acc: ", acc, " loss: ", loss
@@ -158,12 +167,13 @@ for k in range(int(1/test_ratio)):
                 #                            '\t', feature[int(max_idx[-(j+1)])]
 	
         #TEST
-        test_acc, test_loss, test_pred, label, logits = \
-                sess.run([accuracy, loss_mean, prediction, y, y_], feed_dict={x:test_x, y:test_y})
+        test_acc, test_loss, test_pred, test_label, logits = \
+                sess.run([accuracy, loss_mean, yy, y, y_], feed_dict={x:test_x, y:test_y})
 	idx_predict = np.argmax(logits, axis=1)
         corr_0 = 100*len(np.argwhere(idx_predict==0))/len(np.argwhere(label[:,0]==1))
         corr_1 = 100*len(np.argwhere(idx_predict==1))/len(np.argwhere(label[:,1]==1))
         corr_2 = 100*len(np.argwhere(idx_predict==2))/len(np.argwhere(label[:,2]==1))
+        pdb.set_trace()
         print "corr 0, corr 1, corr2: ", corr_0, corr_1, corr_2
         #fpr, tpr, thresholds = metrics.roc_curve(label, test_pred, pos_label=1)
 	#test_auc = metrics.auc(fpr, tpr)
