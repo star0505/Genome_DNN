@@ -1,5 +1,5 @@
 # Genome_DNN
-## cylassification of suicide marker using genome data. 
+*** classification of suicide marker using genome data. ***
 
 You have to prepare genome data as shape [# of samples, # of features].
 
