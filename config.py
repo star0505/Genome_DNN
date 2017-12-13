@@ -13,9 +13,9 @@ config.set('Parameter', 'l2_regularizer_use', 0)
 config.set('Parameter', 'what_data_use', 'both')
 config.set('Parameter', 'save_result_dir', 'result2')
 
-config.set('Parameter', 'data_dir_beta', '../data/ADD_beta_all_cor_0.10')
-config.set('Parameter', 'data_dir_rna', '../data/ADD_RSEM_all_cor_0.10')
-config.set('Parameter', 'data_dir_both', '../data/ADD_beta_RSEM_all_cor_0.10')
+config.set('Parameter', 'data_dir_beta', '~')
+config.set('Parameter', 'data_dir_rna', '~')
+config.set('Parameter', 'data_dir_both', '~')
 
 with open('config.cfg', 'wb') as configfile:
 	config.write(configfile)
