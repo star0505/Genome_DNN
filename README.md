@@ -8,9 +8,9 @@ _Since the data I used is private, I can't inform this._
 Go to run the code.
 First, you select the model type, such as NN, DNN, RNN, multilabelNN, etc.
 Then, you run sh file according model name.
-> ./model_name.sh 
+> ./model_name.sh.
 or
-> sh model_name.sh
+> sh model_name.sh.
 Then, check the performance of model!
 
 ---
